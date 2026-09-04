@@ -6,6 +6,7 @@ new='''  var returnCount = 0;\n\n  function getReturnCount(){\n    return return
 if old not in s:
     raise SystemExit('bloco de contagem nao encontrado')
 s=s.replace(old,new,1)
+# A regra especial continua sendo exclusiva da quinta volta ao início.
 s=s.replace('fifthTryMode = getReturnCount() === 5;','fifthTryMode = getReturnCount() === 5;',1)
 p.write_text(s,encoding='utf-8')
 print('ok')
