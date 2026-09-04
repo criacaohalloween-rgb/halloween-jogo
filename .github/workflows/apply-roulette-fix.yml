@@ -1,0 +1,35 @@
+name: Aplicar correção da roleta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/fix-roulette.py'
+      - '.github/workflows/apply-roulette-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Aplicar patch
+        run: python scripts/fix-roulette.py
+
+      - name: Commitar alteração
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- index.html; then
+            echo "Nenhuma alteração necessária."
+            exit 0
+          fi
+          git add index.html
+          git commit -m "fix: corrige regra da roleta apos 5 voltas ao inicio"
+          git push origin HEAD:main
