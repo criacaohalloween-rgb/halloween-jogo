@@ -4785,11 +4785,11 @@
   }
 
   /* ================= GAME 3: ROLETA ================= */
-  var NORMAL_WHEEL_LABELS = ["TICKET","TENTE\nDE NOVO","VOLTE\nAO INÍCIO","TICKET","TENTE\nDE NOVO","VOLTE\nAO INÍCIO"];
+  var NORMAL_WHEEL_LABELS = ["TICKET","VOLTE\nAO INÍCIO","TENTE\nDE NOVO","TICKET","VOLTE\nAO INÍCIO","TENTE\nDE NOVO"];
   var WHEEL_LABELS = NORMAL_WHEEL_LABELS.slice();
   var fifthTryMode = false;
   var g3 = { spinning:false, totalRotation:0 };
-  var RETURN_COUNT_KEY = "pdh_return_count_v2";
+  var RETURN_COUNT_KEY = "pdh_return_count_v3";
 
   function getReturnCount(){
     try { return Math.max(0, Number(localStorage.getItem(RETURN_COUNT_KEY) || 0)); }
@@ -4808,7 +4808,7 @@
 
   function initGame3(){
     g3.spinning = false;
-    fifthTryMode = getReturnCount() >= 5;
+    fifthTryMode = getReturnCount() === 5;
     WHEEL_LABELS = fifthTryMode ? ["TICKET","TICKET","TICKET","TICKET","TICKET","TICKET"] : NORMAL_WHEEL_LABELS.slice();
     document.getElementById("wheelResult").textContent = "";
     var btn = document.getElementById("spinBtn");
@@ -4844,7 +4844,7 @@
   }
 
   function chooseWheelIndex(outcome){
-    var pool = outcome === "TICKET" ? [0,3] : outcome === "TENTE" ? [1,4] : [2,5];
+    var pool = outcome === "TICKET" ? [0,3] : outcome === "VOLTE" ? [1,4] : [2,5];
     return pool[Math.floor(Math.random()*pool.length)];
   }
 
