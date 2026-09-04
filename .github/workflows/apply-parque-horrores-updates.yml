@@ -1,0 +1,78 @@
+name: Apply Parque dos Horrores updates
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  update-index:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch index.html without replacing the existing game
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+          marker = 'PARQUE-HORRORES-RANKING-V2'
+
+          if marker in text:
+              print('Updates already applied.')
+              raise SystemExit(0)
+
+          # 1) Keep the existing speech-bubble style but move its little tail
+          # farther outside the bubble.
+          text = text.replace('left:14px; bottom:-13px;\n    border:8px solid transparent;',
+                              'left:14px; bottom:-17px;\n    border:8px solid transparent;')
+
+          # 2) Make the existing roulette label "TENTE DE NOVO" horizontal
+          # while preserving the current roulette probabilities and placement.
+          old_wheel = 'span.style.transform = "rotate(" + mid + "deg) translateY(-92px)";'
+          new_wheel = '''if (String(label).replace(/\\s+/g, " ").trim().toUpperCase().replace(/ /g, "\\n") === "TENTE\\nDE\\nNOVO" || String(label).toUpperCase().includes("TENTE")) {
+          span.style.transform = "rotate(" + mid + "deg) translateY(-92px) rotate(" + (-mid) + "deg)";
+        } else {
+          span.style.transform = "rotate(" + mid + "deg) translateY(-92px)";
+        }'''
+          if old_wheel in text and 'rotate(" + (-mid) + "deg)' not in text:
+              text = text.replace(old_wheel, new_wheel, 1)
+
+          # 3) Add a small fixed RANKING button. It is hidden on the intro
+          # screen and shown while any game/final screen is active.
+          ranking_button = '''\n  <!-- PARQUE-HORRORES-RANKING-V2 -->\n  <button id="globalRankingBtn" class="ranking-fab" type="button" aria-haspopup="dialog">RANKING</button>\n  <div id="rankingModal" class="ranking-modal" role="dialog" aria-modal="true" aria-labelledby="rankingTitle" hidden>\n    <div class="ranking-card">\n      <button id="rankingCloseBtn" class="ranking-close" type="button" aria-label="Fechar ranking">×</button>\n      <h2 id="rankingTitle">RANKING</h2>\n      <p id="rankingMessage" class="ranking-message">OS MELHORES TEMPOS DO PARQUE</p>\n      <div class="ranking-table-head"><span>#</span><span>NOME</span><span>TEMPO</span></div>\n      <ol id="rankingList" class="ranking-list"></ol>\n    </div>\n  </div>\n'''
+          if 'id="globalRankingBtn"' not in text:
+              text = text.replace('</body>', ranking_button + '\n</body>', 1)
+
+          # 4) Styling. Keep it self-contained so existing styles are untouched.
+          ranking_css = '''\n  /* PARQUE-HORRORES-RANKING-V2 */\n  .ranking-fab{position:fixed;right:16px;top:16px;z-index:80;border:2px solid var(--ink);background:var(--red);color:var(--bone);font-family:inherit;font-weight:900;letter-spacing:1px;padding:10px 14px;border-radius:8px;cursor:pointer;box-shadow:0 4px 0 var(--ink)}\n  .ranking-fab:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}\n  .ranking-modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:18px}\n  .ranking-modal[hidden]{display:none}\n  .ranking-card{position:relative;width:min(92vw,520px);max-height:86vh;overflow:auto;background:var(--paper);color:var(--ink);border:4px solid var(--ink);border-radius:12px;padding:24px 18px 18px;box-shadow:0 12px 35px rgba(0,0,0,.6)}\n  .ranking-card h2{text-align:center;margin:0 0 5px;font-size:clamp(26px,7vw,40px);letter-spacing:2px}\n  .ranking-message{text-align:center;margin:0 0 18px;font-size:12px;font-weight:900;opacity:.75}\n  .ranking-close{position:absolute;right:8px;top:5px;border:0;background:transparent;color:var(--ink);font-size:32px;line-height:1;cursor:pointer;font-weight:900}\n  .ranking-table-head,.ranking-row{display:grid;grid-template-columns:44px 1fr 90px;gap:8px;align-items:center}\n  .ranking-table-head{font-size:11px;font-weight:900;padding:7px 9px;border-bottom:2px solid var(--ink)}\n  .ranking-table-head span:last-child{text-align:right}\n  .ranking-list{list-style:none;padding:0;margin:0}\n  .ranking-row{padding:10px 9px;border-bottom:1px solid rgba(0,0,0,.22);font-weight:900}\n  .ranking-row .rank{text-align:center}\n  .ranking-row .time{text-align:right;font-variant-numeric:tabular-nums}\n  .ranking-empty{text-align:center;padding:24px 8px;font-weight:900}\n  @media (max-width:600px){.ranking-fab{right:10px;top:10px;padding:8px 11px;font-size:12px}.ranking-card{padding:22px 12px 14px}.ranking-table-head,.ranking-row{grid-template-columns:34px 1fr 78px}}\n'''
+          if '/* PARQUE-HORRORES-RANKING-V2 */' not in text[text.find('</style>')-2000:text.find('</style>')]:
+              text = text.replace('</style>', ranking_css + '\n</style>', 1)
+
+          # 5) Append JS before the final script close. It only adds behavior;
+          # it does not replace any existing game logic.
+          ranking_js = r'''\n  /* PARQUE-HORRORES-RANKING-V2 */\n  (function(){\n    const rankingBtn = document.getElementById('globalRankingBtn');\n    const rankingModal = document.getElementById('rankingModal');\n    const rankingList = document.getElementById('rankingList');\n    const rankingMessage = document.getElementById('rankingMessage');\n    const rankingCloseBtn = document.getElementById('rankingCloseBtn');\n    const rankingStorageKey = 'parqueDosHorroresRankingFallback';\n\n    function rankingFormat(ms){\n      const total = Math.max(0, Math.round(Number(ms)||0));\n      const sec = Math.floor(total/1000);\n      return String(Math.floor(sec/60)).padStart(2,'0') + ':' + String(sec%60).padStart(2,'0');\n    }\n    function getLocalRanking(){\n      try { return JSON.parse(localStorage.getItem(rankingStorageKey)||'[]'); } catch(e){ return []; }\n    }\n    function setLocalRanking(items){\n      try { localStorage.setItem(rankingStorageKey, JSON.stringify(items.slice(0,100))); } catch(e){}\n    }\n    function renderRanking(items){\n      rankingList.innerHTML='';\n      if(!items.length){\n        rankingList.innerHTML='<li class="ranking-empty">AINDA NÃO HÁ VITÓRIAS REGISTRADAS.</li>';\n        return;\n      }\n      items.slice(0,100).forEach(function(item,i){\n        const li=document.createElement('li');\n        li.className='ranking-row';\n        li.innerHTML='<span class="rank">'+(i+1)+'</span><span>'+String(item.name||'JOGADOR').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})+'</span><span class="time">'+rankingFormat(item.elapsedMs)+'</span>';\n        rankingList.appendChild(li);\n      });\n    }\n    async function loadRanking(){\n      rankingMessage.textContent='CARREGANDO OS MELHORES TEMPOS...';\n      try{\n        const response=await fetch('/api/ranking',{cache:'no-store'});\n        if(!response.ok) throw new Error('ranking api unavailable');\n        const data=await response.json();\n        if(!data.ok) throw new Error('ranking api unavailable');\n        const items=(data.ranking||[]).map(function(x){return {name:x.name,elapsedMs:Number(x.elapsedMs)}});\n        rankingMessage.textContent='RANKING GLOBAL • MENOR TEMPO PRIMEIRO';\n        renderRanking(items);\n      }catch(e){\n        rankingMessage.textContent='RANKING LOCAL • API GLOBAL AINDA NÃO DISPONÍVEL NESTE SITE';\n        const items=getLocalRanking().sort(function(a,b){return a.elapsedMs-b.elapsedMs});\n        renderRanking(items);\n      }\n    }\n    function openRanking(){rankingModal.hidden=false;loadRanking();rankingCloseBtn.focus();}\n    function closeRanking(){rankingModal.hidden=true;}\n    if(rankingBtn){rankingBtn.addEventListener('click',openRanking);}\n    if(rankingCloseBtn){rankingCloseBtn.addEventListener('click',closeRanking);}\n    if(rankingModal){rankingModal.addEventListener('click',function(e){if(e.target===rankingModal)closeRanking();});}\n    document.addEventListener('keydown',function(e){if(e.key==='Escape' && rankingModal && !rankingModal.hidden)closeRanking();});\n\n    // Keep the button in the game, not on the intro.\n    function syncRankingButton(){\n      const intro=document.getElementById('screen-intro');\n      const active=document.querySelector('.screen.active');\n      if(rankingBtn) rankingBtn.style.display=(intro && active===intro)?'none':'inline-block';\n    }\n    syncRankingButton();\n    new MutationObserver(syncRankingButton).observe(document.body,{subtree:true,attributes:true,attributeFilter:['class','style']});\n\n    // Save the global result when the existing victory button is used.\n    const saveBtn=document.getElementById('saveResultBtn');\n    const nameInput=document.getElementById('playerName');\n    const status=document.getElementById('finalStatus');\n    if(saveBtn && nameInput && !saveBtn.dataset.rankingV2){\n      saveBtn.dataset.rankingV2='1';\n      saveBtn.addEventListener('click',function(){\n        const name=String(nameInput.value||'').trim().replace(/\s+/g,' ').slice(0,30);\n        const elapsedMs=Number(typeof totalGameTimeMs!=='undefined'?totalGameTimeMs:0);\n        if(!name) return;\n        fetch('/api/ranking',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,elapsedMs})})\n          .then(function(r){if(!r.ok)throw new Error('api');return r.json();})\n          .then(function(data){\n            if(!data.ok) throw new Error('api');\n            status.textContent=name.toUpperCase()+' • '+(typeof formatElapsed==='function'?formatElapsed(elapsedMs):rankingFormat(elapsedMs));\n          })\n          .catch(function(){\n            const items=getLocalRanking();\n            items.push({name:name.toUpperCase(),elapsedMs});\n            items.sort(function(a,b){return a.elapsedMs-b.elapsedMs});\n            setLocalRanking(items);\n            status.textContent=name.toUpperCase()+' • '+(typeof formatElapsed==='function'?formatElapsed(elapsedMs):rankingFormat(elapsedMs))+' • SALVO NESTE DISPOSITIVO';\n          });\n      },true);\n    }\n\n    // The existing angry SVG constant is reused when available.\n    const clown=document.getElementById('clownImg');\n    if(clown && !clown.dataset.clownTouchV2){\n      clown.dataset.clownTouchV2='1';\n      const normalSrc=clown.getAttribute('src');\n      let restoreTimer=null;\n      clown.addEventListener('pointerdown',function(e){\n        if(e.button!==undefined && e.button!==0) return;\n        const angrySrc=(typeof CLOWN_ANGRY!=='undefined')?CLOWN_ANGRY:null;\n        if(angrySrc) clown.src=angrySrc;\n        if(typeof sayLine==='function'){\n          const lines=['NÃO ME ENCOSTE!!','SE CONCENTRE EM JOGAR E NÃO ME TOQUE','POR ISSO PERDE TANTO, NÃO TIRA A MÃO DE MIM'];\n          sayLine(lines[Math.floor(Math.random()*lines.length)],1800);\n        }\n        clearTimeout(restoreTimer);\n        restoreTimer=setTimeout(function(){if(normalSrc) clown.src=normalSrc;},1800);\n      });\n    }\n\n    // User interaction unlocks the existing MP3. Try the requested root path\n    // first, then the paths used by older versions of this project.\n    const bg=document.getElementById('bgMusic');\n    function startParkMusic(){\n      if(!bg) return;\n      bg.loop=true;\n      bg.volume=0.55;\n      const candidates=['./Trim_VtA_Twisted%20Carousel_1_1.mp3','./audio/Trim_VtA_Twisted%20Carousel_1_1.mp3','./assets/audio/Trim_VtA_Twisted%20Carousel_1_1.mp3'];\n      let i=0;\n      function tryNext(){\n        if(i>=candidates.length) return;\n        bg.src=candidates[i++];\n        bg.play().catch(function(){tryNext();});\n      }\n      tryNext();\n    }\n    const start=document.getElementById('startBtn');\n    if(start && !start.dataset.musicV2){\n      start.dataset.musicV2='1';\n      start.addEventListener('pointerdown',startParkMusic,{once:true});\n      start.addEventListener('click',startParkMusic,{once:true});\n    }\n    // Initial clown instruction on the intro screen.\n    setTimeout(function(){\n      if(document.getElementById('screen-intro')?.classList.contains('active') && typeof sayLine==='function'){\n        sayLine('LIGUE O SOM... ASSIM VOCÊ ESCUTA A MÚSICA DO PARQUE.',100000);\n      }\n    },350);\n  })();\n'''
+          if marker not in text:
+              pos = text.rfind('</script>')
+              if pos < 0:
+                  raise SystemExit('Não encontrei o fechamento do script em index.html')
+              text = text[:pos] + ranking_js + text[pos:]
+
+          path.write_text(text, encoding='utf-8')
+          print('index.html patched successfully')
+      - name: Commit patched index
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: adiciona ranking, reações do palhaço e áudio"
+          git push
